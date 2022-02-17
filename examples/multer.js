@@ -1,28 +1,32 @@
 'use strict';
 
-const log     = console.log;
-const Koa     = require('koa');
-const app     = new Koa();
-const koaBody = require('../index');
-const port    = process.env.PORT || 4290;
-const host    = 'http://localhost';
+import Koa from "koa";
+import koaBody from "../index.js";
+import path from "path";
+import { fileURLToPath } from 'url';
 
+const log = console.log;
+const app = new Koa();
+const port = process.env.PORT || 4290;
+const host = 'http://localhost';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 app
-  .use(koaBody({
-    multipart: true,
-    formLimit: 15,
-    formidable: {
-      uploadDir: __dirname + '/uploads'
-    }
-  }))
-  .use((ctx) => {
-    if (ctx.request.method === 'POST') {
-      log(ctx.request.body);
-      // => POST body object
-      ctx.body = JSON.stringify(ctx.request.body, null, 2);
-    }
-  })
-  .listen(port);
+    .use(koaBody({
+        multipart: true,
+        formLimit: 15,
+        formidable: {
+            uploadDir: __dirname + '/uploads'
+        }
+    }))
+    .use((ctx) => {
+        if (ctx.request.method === 'POST') {
+            log(ctx.request.body);
+            // => POST body object
+            ctx.body = JSON.stringify(ctx.request.body, null, 2);
+        }
+    })
+    .listen(port);
 
 
 log('Visit %s:%s/ in browser.', host, port);

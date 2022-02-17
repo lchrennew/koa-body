@@ -3,6 +3,7 @@
   "version": "4.2.0",
   "description": "A Koa body parser middleware. Supports multipart, urlencoded and JSON request bodies.",
   "main": "index.js",
+  "type": "module",
   "types": "./index.d.ts",
   "scripts": {
     "test": "mocha test/unit/",
@@ -36,18 +37,18 @@
     "unparsed.js"
   ],
   "dependencies": {
-    "@types/formidable": "^1.0.31",
-    "co-body": "^5.1.1",
-    "formidable": "^1.1.1"
+    "@types/formidable": "^2.0.4",
+    "co-body": "^6.1.0",
+    "formidable": "^2.0.1"
   },
   "devDependencies": {
-    "@types/koa": "^2.0.39",
-    "koa": "^2.0.0",
-    "koa-router": "^7.0.1",
-    "mocha": "5.2.0",
-    "should": "13.2.1",
-    "sinon": "^7.2.2",
-    "supertest": "3.1.0"
+    "@types/koa": "^2.13.4",
+    "koa": "^2.13.4",
+    "koa-router": "^10.1.1",
+    "mocha": "^9.2.0",
+    "should": "^13.2.3",
+    "sinon": "^13.0.1",
+    "supertest": "^6.2.2"
   },
   "contributors": [
     {

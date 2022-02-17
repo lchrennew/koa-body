@@ -9,6 +9,4 @@
  * @api private
  */
 
-'use strict';
-
-module.exports = Symbol.for('unparsedBody');
+export default Symbol.for('unparsedBody');
