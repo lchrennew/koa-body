@@ -1,6 +1,6 @@
 {
-  "name": "koa-body",
-  "version": "4.2.0",
+  "name": "es-koa-body",
+  "version": "4.2.1",
   "description": "A Koa body parser middleware. Supports multipart, urlencoded and JSON request bodies.",
   "main": "index.js",
   "type": "module",
@@ -17,7 +17,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/dlau/koa-body.git"
+    "url": "git://github.com/lchrennew/koa-body.git"
   },
   "keywords": [
     "koa",
