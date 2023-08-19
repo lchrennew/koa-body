@@ -7,7 +7,7 @@
  * @author  Charlike Mike Reagent (@tunnckoCore)
  * @api private
  */
-import buddy from "es-co-body";
+import * as buddy from "es-co-body";
 import forms from "formidable";
 import symbolUnparsed from "./unparsed.js";
 
