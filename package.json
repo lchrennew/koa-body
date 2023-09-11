@@ -1,6 +1,6 @@
 {
   "name": "es-koa-body",
-  "version": "4.2.6",
+  "version": "4.2.7",
   "description": "A Koa body parser middleware. Supports multipart, urlencoded and JSON request bodies.",
   "main": "index.js",
   "type": "module",
@@ -38,7 +38,7 @@
   ],
   "dependencies": {
     "@types/formidable": "^3.4.1",
-    "es-co-body": "^1.0.7",
+    "es-co-body": "^1.0.8",
     "formidable": "^3.5.0"
   },
   "devDependencies": {
