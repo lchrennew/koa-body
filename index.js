@@ -27,6 +27,10 @@ const yamlTypes = [
     'application/x-yaml'
 ];
 
+const append = (obj, key, val) => {
+    obj[key] = obj[key] ? (Array.isArray(obj[key]) ? [...obj[key], val] : [obj[key], val]) : val;
+};
+
 /**
  * 包装 formidable，返回一个 Promise 以支持 async/await
  *
@@ -39,37 +43,14 @@ const formy = (ctx, opts) => new Promise((resolve, reject) => {
     const fields = {};
     const files = {};
     const form = forms(opts);
-    form.on('end', () => resolve({
-        fields,
-        files
-    }))
+    
+    form.on('end', () => resolve({ fields, files }))
         .on('error', err => reject(err))
-        .on('field', (field, value) => {
-            // 处理同名字段，将其转为数组存储
-            if (fields[field]) {
-                if (Array.isArray(fields[field])) {
-                    fields[field].push(value);
-                } else {
-                    fields[field] = [ fields[field], value ];
-                }
-            } else {
-                fields[field] = value;
-            }
-        })
-        .on('file', (field, file) => {
-            // 处理同名文件，将其转为数组存储
-            if (files[field]) {
-                if (Array.isArray(files[field])) {
-                    files[field].push(file);
-                } else {
-                    files[field] = [ files[field], file ];
-                }
-            } else {
-                files[field] = file;
-            }
-        });
+        .on('field', (field, value) => append(fields, field, value))
+        .on('file', (field, file) => append(files, field, file));
+        
     // 如果配置了 onFileBegin 回调，则绑定事件
-    if (opts.onFileBegin) form.on('fileBegin', opts.onFileBegin);
+    if (opts?.onFileBegin) form.on('fileBegin', opts.onFileBegin);
     // 开始解析请求
     form.parse(ctx.req);
 });
@@ -83,8 +64,68 @@ const formy = (ctx, opts) => new Promise((resolve, reject) => {
  * @return {Boolean} 如果是 multipart 请求并需要处理则返回 true
  * @api private
  */
-const isMultiPart = (ctx, opts) => opts.multipart && ctx.is('multipart');
+const isMultiPart = (ctx, { multipart }) => multipart && ctx.is('multipart');
 
+
+/**
+ * 根据不同的 Content-Type 调用对应的解析器解析请求体
+ */
+const parsers = [
+    {
+        match: (ctx, { json }) => json && ctx.is(jsonTypes),
+        parse: (ctx, { encoding, jsonLimit: limit, jsonStrict: strict, includeUnparsed: returnRawBody }) => buddy.json(ctx, { encoding, limit, strict, returnRawBody })
+    },
+    {
+        match: (ctx, { yaml }) => yaml && ctx.is(yamlTypes),
+        parse: async (ctx, { encoding, yamlLimit: limit, includeUnparsed: returnRawBody }) => {
+            const textBody = await buddy.text(ctx, { encoding, limit, returnRawBody });
+            const str = returnRawBody ? textBody.parsed : textBody;
+            const parsed = yaml.parse(str);
+            return returnRawBody ? { parsed, raw: textBody.raw } : parsed;
+        }
+    },
+    {
+        match: (ctx, { urlencoded }) => urlencoded && ctx.is('urlencoded'),
+        parse: (ctx, { encoding, formLimit: limit, queryString, includeUnparsed: returnRawBody }) => buddy.form(ctx, { encoding, limit, queryString, returnRawBody })
+    },
+    {
+        match: (ctx, { text }) => text && ctx.is('text/*'),
+        parse: (ctx, { encoding, textLimit: limit, includeUnparsed: returnRawBody }) => buddy.text(ctx, { encoding, limit, returnRawBody })
+    },
+    {
+        match: (ctx, { multipart }) => multipart && ctx.is('multipart'),
+        parse: (ctx, { formidable }) => formy(ctx, formidable)
+    }
+];
+
+const parseBody = (ctx, opts) => parsers.find(p => p.match(ctx, opts))?.parse(ctx, opts) ?? {};
+
+/**
+ * 将解析后的数据附加到对应的请求对象上
+ */
+const patchContext = (ctx, opts, body) => {
+    const isMulti = isMultiPart(ctx, opts);
+    const isText = ctx.is('text/*');
+
+    const { patchNode, patchKoa, includeUnparsed } = opts;
+
+    const patch = (request) => {
+        if (isMulti) {
+            request.body = body.fields;
+            request.files = body.files;
+        } else if (includeUnparsed) {
+            request.body = body.parsed || {};
+            if (!isText) {
+                request.body[symbolUnparsed] = body.raw;
+            }
+        } else {
+            request.body = body;
+        }
+    };
+
+    if (patchNode) patch(ctx.req);
+    if (patchKoa) patch(ctx.request);
+};
 
 /**
  * koa-body 中间件主体
@@ -95,7 +136,7 @@ const isMultiPart = (ctx, opts) => opts.multipart && ctx.is('multipart');
  */
 export default opts => {
     // 初始化默认配置
-    opts = {
+    const options = {
         onError: false,
         patchNode: false,
         patchKoa: true,
@@ -118,97 +159,29 @@ export default opts => {
         parsedMethods: opts?.parsedMethods?.map?.(method => method.toUpperCase()) ?? [ 'POST', 'PUT', 'PATCH' ],
     };
 
+    const { parsedMethods, onError } = options;
+
     // 返回 koa 中间件函数
-    return (ctx, next) => {
-        let bodyPromise;
+    return async (ctx, next) => {
+        let body = {};
+        
         // 仅当请求方法在允许的列表中时，才解析请求体
-        if (opts.parsedMethods.includes(ctx.method.toUpperCase())) {
+        if (parsedMethods.includes(ctx.method.toUpperCase())) {
             try {
-                // 根据不同的 Content-Type 调用对应的解析器
-                if (opts.json && ctx.is(jsonTypes)) {
-                    bodyPromise = buddy.json(ctx, {
-                        encoding: opts.encoding,
-                        limit: opts.jsonLimit,
-                        strict: opts.jsonStrict,
-                        returnRawBody: opts.includeUnparsed
-                    });
-                } else if (opts.yaml && ctx.is(yamlTypes)) {
-                    bodyPromise = buddy.text(ctx, {
-                        encoding: opts.encoding,
-                        limit: opts.yamlLimit,
-                        returnRawBody: opts.includeUnparsed
-                    }).then(body => {
-                        // 如果 opts.includeUnparsed 为 true，buddy.text 返回 { parsed: string, raw: string }
-                        const str = opts.includeUnparsed ? body.parsed : body;
-                        const parsed = yaml.parse(str);
-                        return opts.includeUnparsed ? { parsed, raw: body.raw } : parsed;
-                    });
-                } else if (opts.urlencoded && ctx.is('urlencoded')) {
-                    const {
-                        encoding,
-                        formLimit: limit,
-                        queryString,
-                        includeUnparsed: returnRawBody,
-                    } = opts
-                    bodyPromise = buddy.form(ctx, { encoding, limit, queryString, returnRawBody });
-                } else if (opts.text && ctx.is('text/*')) {
-                    const { encoding, textLimit: limit, includeUnparsed: returnRawBody } = opts
-                    bodyPromise = buddy.text(ctx, { encoding, limit, returnRawBody });
-                } else if (opts.multipart && ctx.is('multipart')) {
-                    bodyPromise = formy(ctx, opts.formidable);
-                }
+                body = await parseBody(ctx, options);
             } catch (parsingError) {
                 // 解析时抛出异常的错误处理
-                if (opts.onError instanceof Function) {
-                    opts.onError(parsingError, ctx);
+                if (typeof onError === 'function') {
+                    onError(parsingError, ctx);
                 } else {
                     throw parsingError;
                 }
+                return next();
             }
         }
 
-        // 如果没有匹配的解析器，则直接返回空对象的 Promise
-        bodyPromise ??= Promise.resolve({});
-        
-        return bodyPromise.catch(parsingError => {
-            // 处理 Promise 拒绝的错误
-            if (opts.onError instanceof Function) {
-                opts.onError(parsingError, ctx);
-            } else {
-                throw parsingError;
-            }
-            return next();
-        })
-            .then(body => {
-                // 将解析后的数据附加到 Node 原生 req 对象上
-                if (opts.patchNode) {
-                    if (isMultiPart(ctx, opts)) {
-                        ctx.req.body = body.fields;
-                        ctx.req.files = body.files;
-                    } else if (opts.includeUnparsed) {
-                        ctx.req.body = body.parsed || {};
-                        if (!ctx.is('text/*')) {
-                            ctx.req.body[symbolUnparsed] = body.raw;
-                        }
-                    } else {
-                        ctx.req.body = body;
-                    }
-                }
-                // 将解析后的数据附加到 Koa 的 request 对象上
-                if (opts.patchKoa) {
-                    if (isMultiPart(ctx, opts)) {
-                        ctx.request.body = body.fields;
-                        ctx.request.files = body.files;
-                    } else if (opts.includeUnparsed) {
-                        ctx.request.body = body.parsed || {};
-                        if (!ctx.is('text/*')) {
-                            ctx.request.body[symbolUnparsed] = body.raw;
-                        }
-                    } else {
-                        ctx.request.body = body;
-                    }
-                }
-                return next();
-            })
+        patchContext(ctx, options, body);
+
+        return next();
     };
 };

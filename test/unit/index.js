@@ -645,6 +645,58 @@ followers: 41
         }
     });
 
+    describe('YAML media types', () => {
+        const types = [
+            'text/yaml',
+            'application/yaml',
+            'application/x-yaml'
+        ];
+
+        for (const type of types) {
+            it(`should decode body as YAML object for type ${type}`, (done) => {
+                app.use(koaBody({ yaml: true }));
+                app.use(router.routes());
+
+                const yamlBody = `
+a: foo
+b:
+  - 42
+`;
+
+                request(http.createServer(app.callback()))
+                    .post('/echo_body')
+                    .type(type)
+                    .send(yamlBody)
+                    .expect(200, {
+                        a: 'foo',
+                        b: [ 42 ]
+                    }, done);
+            });
+        }
+        
+        for (const type of types) {
+            it(`should decode body as YAML array for type ${type}`, (done) => {
+                app.use(koaBody({ yaml: true }));
+                app.use(router.routes());
+
+                const yamlBody = `
+- a: foo
+  b:
+    - 42
+`;
+
+                request(http.createServer(app.callback()))
+                    .post('/echo_body')
+                    .type(type)
+                    .send(yamlBody)
+                    .expect(200, [ {
+                        a: 'foo',
+                        b: [ 42 ]
+                    } ], done);
+            });
+        }
+    });
+
     const ERR_413_STATUSTEXT = 'request entity too large';
 
     /**
