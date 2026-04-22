@@ -40,7 +40,7 @@ describe('koa-body', () => {
                 }
             ]
         };
-        router = Router()
+        router = new Router()
             .get('/users', (ctx, next) => {
                 if (ctx.request.body && ctx.request.body.name) {
                     ctx.body = database.users.find(element => element.name === ctx.request.body.name);
@@ -395,12 +395,41 @@ describe('koa-body', () => {
                 });
         });
 
+        it('should receive yaml request bodies as parsed object with the `includeUnparsed` option', (done) => {
+
+            const echoRouterLayer = router.stack.filter(layer => layer.path === "/echo_body");
+            requestSpy = sinon.spy(echoRouterLayer[0].stack, '0');
+
+            const yamlBody = `
+hello: world
+number: 42
+`;
+            request(http.createServer(app.callback()))
+                .post('/echo_body')
+                .type('application/yaml')
+                .send(yamlBody)
+                .expect(200)
+                .end((err, res) => {
+                    if (err) return done(err);
+
+                    assert(requestSpy.calledOnce, 'Spy for /echo_body not called');
+                    const req = requestSpy.firstCall.args[0].request;
+                    req.body[unparsed].should.not.be.Undefined();
+                    req.body[unparsed].should.be.a.String();
+                    req.body[unparsed].should.equal(yamlBody);
+
+                    res.body.should.have.properties({ hello: 'world', number: 42 });
+
+                    done();
+                });
+        });
+
     });
 
     /**
      * TEXT request body
      */
-    it('should recieve `text` request bodies', (done) => {
+    it('should receive `text` request bodies', (done) => {
         app.use(koaBody({ multipart: true }));
         app.use(router.routes());
 
@@ -414,6 +443,32 @@ describe('koa-body', () => {
 
                 res.type.should.equal('text/plain');
                 res.text.should.equal('plain text');
+
+                done();
+            });
+    });
+
+    /**
+     * YAML request body
+     */
+    it('should receive `yaml` request bodies', (done) => {
+        app.use(koaBody({ yaml: true }));
+        app.use(router.routes());
+
+        const yamlBody = `
+name: example
+followers: 41
+`;
+
+        request(http.createServer(app.callback()))
+            .post('/echo_body')
+            .type('application/yaml')
+            .send(yamlBody)
+            .expect(200)
+            .end((err, res) => {
+                if (err) return done(err);
+
+                res.body.should.have.properties({ name: 'example', followers: 41 });
 
                 done();
             });
@@ -646,6 +701,21 @@ describe('koa-body', () => {
         request(http.createServer(app.callback()))
             .post('/users')
             .type('text')
+            .send('String longer than 10 bytes...')
+            .expect(413, ERR_413_STATUSTEXT)
+            .end(done);
+    });
+
+    /**
+     * YAML LIMIT
+     */
+    it('should request 413 ' + ERR_413_STATUSTEXT + ', because of `yamlLimit`', (done) => {
+        app.use(koaBody({ yamlLimit: 10 /*bytes*/ }));
+        app.use(router.routes());
+
+        request(http.createServer(app.callback()))
+            .post('/users')
+            .type('application/yaml')
             .send('String longer than 10 bytes...')
             .expect(413, ERR_413_STATUSTEXT)
             .end(done);
